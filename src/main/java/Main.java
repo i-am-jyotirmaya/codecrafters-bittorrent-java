@@ -1,4 +1,8 @@
 import com.google.gson.Gson;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 // import com.dampcake.bencode.Bencode; - available if you need it!
 
 public class Main {
@@ -27,21 +31,77 @@ public class Main {
   }
 
   static Object decodeBencode(String bencodedString) {
-    if (Character.isDigit(bencodedString.charAt(0))) {
-      int firstColonIndex = 0;
-      for(int i = 0; i < bencodedString.length(); i++) { 
-        if(bencodedString.charAt(i) == ':') {
-          firstColonIndex = i;
-          break;
+    return decodeBencode(bencodedString, false);
+  }
+
+  static Object decodeBencode(String bencodedString, boolean isProcessingList) {
+    int startIndex = 0;
+    List<Object> decoded = new ArrayList<>();
+    while (startIndex < bencodedString.length()) {
+      if (Character.isDigit(bencodedString.charAt(startIndex))) {
+        int firstColonIndex = startIndex;
+        for(int i = startIndex; i < bencodedString.length(); i++) {
+          if(bencodedString.charAt(i) == ':') {
+            firstColonIndex = i;
+            break;
+          }
         }
+        int length = Integer.parseInt(bencodedString.substring(startIndex, firstColonIndex));
+        String result = bencodedString.substring(firstColonIndex+1, firstColonIndex+1+length);
+        decoded.add(result);
+        startIndex = firstColonIndex+1+length;
+      } else if (bencodedString.charAt(startIndex) == 'i') {
+        int endIndex = bencodedString.indexOf('e', startIndex);
+        long result = Long.parseLong(bencodedString.substring(startIndex + 1, endIndex));
+        decoded.add(result);
+        startIndex = endIndex + 1;
+      } else if (bencodedString.charAt(startIndex) == 'l') {
+        int endIndex = findCorrespondingEIndexForEncodedList(bencodedString, startIndex);
+        String encodedList = bencodedString.substring(startIndex + 1, endIndex);
+        if(!encodedList.isEmpty()) {
+          decoded.add(decodeBencode(encodedList, true));
+        } else {
+          decoded.add(Collections.emptyList());
+        }
+        startIndex = endIndex + 1;
+      } else {
+        throw new RuntimeException("Only strings are supported at the moment");
       }
-      int length = Integer.parseInt(bencodedString.substring(0, firstColonIndex));
-      return bencodedString.substring(firstColonIndex+1, firstColonIndex+1+length);
-    } else if (bencodedString.charAt(0) == 'i' && bencodedString.charAt(bencodedString.length() - 1) == 'e') {
-      return Long.parseLong(bencodedString.substring(1, bencodedString.length() - 1));
-    } else {
-      throw new RuntimeException("Only strings are supported at the moment");
     }
+    if (decoded.size() > 1 || isProcessingList) {
+      return decoded;
+    }
+    return decoded.getFirst();
+  }
+
+  private static int findCorrespondingEIndexForEncodedList(String bencodedString, int startIndex) {
+    if (bencodedString.charAt(startIndex) != 'l') {
+      return -1;
+    }
+
+    for (int i = startIndex + 1; i < bencodedString.length(); i++) {
+      if(bencodedString.charAt(i) == 'e') {
+        return i;
+      }
+      if (bencodedString.charAt(i) == 'i') {
+        i = bencodedString.indexOf('e', i);
+      } else if (Character.isDigit(bencodedString.charAt(i))) {
+        int firstColonIndex = i;
+        for(int j = i; j < bencodedString.length(); j++) {
+          if(bencodedString.charAt(j) == ':') {
+            firstColonIndex = j;
+            break;
+          }
+        }
+        int length = Integer.parseInt(bencodedString.substring(i, firstColonIndex));
+        i = firstColonIndex + length;
+      } else if (bencodedString.charAt(i) == 'l') {
+        i = findCorrespondingEIndexForEncodedList(bencodedString, i);
+      }
+
+    }
+
+    return -1;
   }
   
 }
