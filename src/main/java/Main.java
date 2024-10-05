@@ -1,9 +1,15 @@
 import com.google.gson.Gson;
 
+import java.io.ByteArrayInputStream;
+import java.io.PushbackInputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 // import com.dampcake.bencode.Bencode; - available if you need it!
 
 public class Main {
@@ -31,6 +37,14 @@ public class Main {
         }
         System.out.println(gson.toJson(decoded));
 
+    } else if ("info".equals(command)) {
+      byte[] torrentFile = Files.readAllBytes(Paths.get(args[1]));
+      PushbackInputStream in = new PushbackInputStream(new ByteArrayInputStream(torrentFile));
+      Map<String, Object> torrentData = (Map<String, Object>) Bencode.decodeBencode(in);
+      String announceUrl = new String((byte[]) torrentData.get("announce"), StandardCharsets.UTF_8);
+      long length = (long) ((Map<String, Object>) torrentData.get("info")).get("length");
+      System.out.println("Tracker URL: " + announceUrl);
+      System.out.println("Length: " + length);
     } else {
       System.out.println("Unknown command: " + command);
     }
