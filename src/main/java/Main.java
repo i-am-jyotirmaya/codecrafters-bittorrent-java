@@ -2,15 +2,22 @@ import com.google.gson.Gson;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 // import com.dampcake.bencode.Bencode; - available if you need it!
 
 public class Main {
   private static final Gson gson = new Gson();
 
+  private static final HashMap<EncodedType, String> typeMap = new HashMap<>();
+
+  static {
+    typeMap.put(EncodedType.INTEGER, "i");
+    typeMap.put(EncodedType.LIST, "l");
+    typeMap.put(EncodedType.DICTIONARY, "d");
+  }
+
   public static void main(String[] args) throws Exception {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-//    System.out.println("Logs from your program will appear here!");
     String command = args[0];
     if("decode".equals(command)) {
       //  Uncomment this block to pass the first stage
@@ -56,13 +63,25 @@ public class Main {
         decoded.add(result);
         startIndex = endIndex + 1;
       } else if (bencodedString.charAt(startIndex) == 'l') {
-        int endIndex = findCorrespondingEIndexForEncodedList(bencodedString, startIndex);
+        int endIndex = findCorrespondingEnd(bencodedString, startIndex, EncodedType.LIST);
         String encodedList = bencodedString.substring(startIndex + 1, endIndex);
         if(!encodedList.isEmpty()) {
           decoded.add(decodeBencode(encodedList, true));
         } else {
           decoded.add(Collections.emptyList());
         }
+        startIndex = endIndex + 1;
+      } else if (bencodedString.charAt(startIndex) == 'd') {
+        int endIndex = findCorrespondingEnd(bencodedString, startIndex, EncodedType.DICTIONARY);
+        String encodedList = bencodedString.substring(startIndex + 1, endIndex);
+        List<Object> decodedList = (List<Object>) decodeBencode(encodedList, true);
+        HashMap<String, Object> map = new HashMap<>();
+        if (!encodedList.isEmpty()) {
+          for (int i = 0; i < decodedList.size(); i+=2) {
+            map.put((String) decodedList.get(i), decodedList.get(i+1));
+          }
+        }
+        decoded.add(map);
         startIndex = endIndex + 1;
       } else {
         throw new RuntimeException("Only strings are supported at the moment");
@@ -74,9 +93,29 @@ public class Main {
     return decoded.getFirst();
   }
 
-  private static int findCorrespondingEIndexForEncodedList(String bencodedString, int startIndex) {
-    if (bencodedString.charAt(startIndex) != 'l') {
+  private static int findCorrespondingEnd(String bencodedString, int startIndex, EncodedType type) {
+    if (EncodedType.STRING.equals(type)) {
+      if (Character.isDigit(bencodedString.charAt(startIndex))) {
+        int firstColonIndex = startIndex;
+        for (int j = startIndex; j < bencodedString.length(); j++) {
+          if (bencodedString.charAt(j) == ':') {
+            firstColonIndex = j;
+            break;
+          }
+        }
+        int length = Integer.parseInt(bencodedString.substring(startIndex, firstColonIndex));
+        return firstColonIndex + length;
+      }
+    }
+
+    char startChar = typeMap.get(type).charAt(0);
+
+    if (bencodedString.charAt(startIndex) != startChar) {
       return -1;
+    }
+
+    if (EncodedType.INTEGER.equals(type)) {
+      return bencodedString.indexOf('e', startIndex);
     }
 
     for (int i = startIndex + 1; i < bencodedString.length(); i++) {
@@ -96,12 +135,15 @@ public class Main {
         int length = Integer.parseInt(bencodedString.substring(i, firstColonIndex));
         i = firstColonIndex + length;
       } else if (bencodedString.charAt(i) == 'l') {
-        i = findCorrespondingEIndexForEncodedList(bencodedString, i);
+        i = findCorrespondingEnd(bencodedString, i, EncodedType.LIST);
+      } else if (bencodedString.charAt(i) == 'd') {
+        i = findCorrespondingEnd(bencodedString, i, EncodedType.DICTIONARY);
       }
 
     }
 
     return -1;
+
   }
   
 }
