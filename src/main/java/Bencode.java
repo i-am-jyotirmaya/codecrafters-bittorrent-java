@@ -1,12 +1,15 @@
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PushbackInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Dictionary;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 
 public class Bencode {
 
@@ -25,7 +28,45 @@ public class Bencode {
         }
     }
 
-    static long decodeInteger(PushbackInputStream in) throws IOException {
+    static void bencode(Object object, OutputStream out) throws IOException {
+        if (object instanceof Map<?,?>) {
+            Map<String, Object> map = (Map<String, Object>) object;
+            out.write('d');
+            for (String key : map.keySet()) {
+                bencode(key, out);
+                bencode(map.get(key), out);
+            }
+            out.write('e');
+        } else if (object instanceof List) {
+            List<Object> list = (List<Object>) object;
+            out.write('l');
+            for (Object item : list) {
+                bencode(item, out);
+            }
+            out.write('e');
+        } else if (object instanceof Long || object instanceof Integer) {
+            out.write('i');
+            String numberStr = object.toString();
+            out.write(numberStr.getBytes(StandardCharsets.US_ASCII));
+            out.write('e');
+        } else if (object instanceof byte[]) {
+            byte[] bytes = (byte[]) object;
+            String lengthStr = Integer.toString(bytes.length);
+            out.write(lengthStr.getBytes(StandardCharsets.US_ASCII));
+            out.write(':');
+            out.write(bytes);
+        } else if (object instanceof String) {
+            byte[] bytes = ((String) object).getBytes(StandardCharsets.UTF_8);
+            String lengthStr = Integer.toString(bytes.length);
+            out.write(lengthStr.getBytes(StandardCharsets.US_ASCII));
+            out.write(':');
+            out.write(bytes);
+        } else {
+            throw new IllegalArgumentException("Unsupported object type: " + object.getClass());
+        }
+    }
+
+    private static long decodeInteger(PushbackInputStream in) throws IOException {
         StringBuilder sb = new StringBuilder();
         int c;
         while ((c = in.read()) != 'e') {
@@ -34,7 +75,7 @@ public class Bencode {
         return Long.parseLong(sb.toString());
     }
 
-    static byte[] decodeString(PushbackInputStream in, int firstDigit) throws IOException {
+    private static byte[] decodeString(PushbackInputStream in, int firstDigit) throws IOException {
         StringBuilder lengthStr = new StringBuilder();
         lengthStr.append((char) firstDigit);
         int c;
@@ -50,7 +91,7 @@ public class Bencode {
         return bytes;
     }
 
-    static List<Object> decodeList(PushbackInputStream in) throws IOException {
+    private static List<Object> decodeList(PushbackInputStream in) throws IOException {
         List<Object> list = new ArrayList<>();
         while (true) {
             int c = in.read();
@@ -63,8 +104,8 @@ public class Bencode {
         return list;
     }
 
-    static Map<String, Object> decodeDictionary(PushbackInputStream in) throws IOException {
-        Map<String, Object> map = new HashMap<>();
+    private static Map<String, Object> decodeDictionary(PushbackInputStream in) throws IOException {
+        Map<String, Object> map = new TreeMap<>();
         while (true) {
             int c = in.read();
             if (c == 'e') {

@@ -1,6 +1,7 @@
 import com.google.gson.Gson;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.PushbackInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -42,9 +43,13 @@ public class Main {
       PushbackInputStream in = new PushbackInputStream(new ByteArrayInputStream(torrentFile));
       Map<String, Object> torrentData = (Map<String, Object>) Bencode.decodeBencode(in);
       String announceUrl = new String((byte[]) torrentData.get("announce"), StandardCharsets.UTF_8);
-      long length = (long) ((Map<String, Object>) torrentData.get("info")).get("length");
+      Map<String, Object> info = (Map<String, Object>) torrentData.get("info");
+      long length = (long) info.get("length");
+      ByteArrayOutputStream bencodedInfoOutputStream = new ByteArrayOutputStream();
+      Bencode.bencode(info, bencodedInfoOutputStream);
       System.out.println("Tracker URL: " + announceUrl);
       System.out.println("Length: " + length);
+      System.out.println("Info Hash: " + HashingUtils.calculateSHA1(bencodedInfoOutputStream.toByteArray()));
     } else {
       System.out.println("Unknown command: " + command);
     }
