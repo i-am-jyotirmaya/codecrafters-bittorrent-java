@@ -1,7 +1,18 @@
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-public class HashingUtils {
+public class Utils {
+
+    private static final String    HEXES    = "0123456789abcdef";
+
+    // Taken from stackoverflow.com https://stackoverflow.com/a/26975031
+    static String getHex(byte[] raw) {
+        final StringBuilder hex = new StringBuilder(2 * raw.length);
+        for (final byte b : raw) {
+            hex.append(HEXES.charAt((b & 0xf0) >> 4)).append(HEXES.charAt((b & 0x0f)));
+        }
+        return hex.toString();
+    }
 
     public static String calculateSHA1(byte[] input) throws NoSuchAlgorithmException {
         MessageDigest md = MessageDigest.getInstance("SHA-1");

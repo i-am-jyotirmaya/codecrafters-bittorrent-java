@@ -45,15 +45,49 @@ public class Main {
       String announceUrl = new String((byte[]) torrentData.get("announce"), StandardCharsets.UTF_8);
       Map<String, Object> info = (Map<String, Object>) torrentData.get("info");
       long length = (long) info.get("length");
+      long pieceLength = (long) info.get("piece length");
+      byte[] pieces = (byte[]) info.get("pieces");
+      List<byte[]> splitPiecesList = splitPieces(pieces);
+      List<String> splitPiecesHexList = new ArrayList<>(splitPiecesList.size());
+      for(byte[] piece: splitPiecesList) {
+        splitPiecesHexList.add(Utils.getHex(piece));
+      }
       ByteArrayOutputStream bencodedInfoOutputStream = new ByteArrayOutputStream();
       Bencode.bencode(info, bencodedInfoOutputStream);
+
       System.out.println("Tracker URL: " + announceUrl);
       System.out.println("Length: " + length);
-      System.out.println("Info Hash: " + HashingUtils.calculateSHA1(bencodedInfoOutputStream.toByteArray()));
+      System.out.println("Info Hash: " + Utils.calculateSHA1(bencodedInfoOutputStream.toByteArray()));
+      System.out.println("Piece Length: " + pieceLength);
+      System.out.println("Piece Hashes: " + formatPiecesHex(splitPiecesHexList));
     } else {
       System.out.println("Unknown command: " + command);
     }
 
+  }
+
+  static private String formatPiecesHex(List<String> piecesHexList) {
+    StringBuilder sb = new StringBuilder();
+    for(String pieceHex: piecesHexList) {
+      sb.append('\n');
+      sb.append(pieceHex);
+    }
+    return sb.toString();
+  }
+
+  static private List<byte[]> splitPieces(byte[] pieces) {
+    List<byte[]> splitPieces = new ArrayList<>();
+    byte[] piece = new byte[20];
+    for(int i = 0; i < pieces.length; i++) {
+      if (i % 20 == 0) {
+        piece = new byte[20];
+        splitPieces.add(piece);
+      }
+
+      piece[i % 20] = pieces[i];
+    }
+
+    return splitPieces;
   }
 
   static Object decodeBencode(String bencodedString) {
