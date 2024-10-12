@@ -14,6 +14,11 @@ public class Utils {
         return hex.toString();
     }
 
+    public static byte[] calculateSHA1Raw(byte[] input) throws NoSuchAlgorithmException {
+        MessageDigest md = MessageDigest.getInstance("SHA-1");
+        return md.digest(input);
+    }
+
     public static String calculateSHA1(byte[] input) throws NoSuchAlgorithmException {
         MessageDigest md = MessageDigest.getInstance("SHA-1");
         byte[] messageDigest = md.digest(input);

@@ -1,11 +1,26 @@
 import com.google.gson.Gson;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.PushbackInputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,8 +55,7 @@ public class Main {
 
     } else if ("info".equals(command)) {
       byte[] torrentFile = Files.readAllBytes(Paths.get(args[1]));
-      PushbackInputStream in = new PushbackInputStream(new ByteArrayInputStream(torrentFile));
-      Map<String, Object> torrentData = (Map<String, Object>) Bencode.decodeBencode(in);
+      Map<String, Object> torrentData = parseTorrentInfo(torrentFile);
       String announceUrl = new String((byte[]) torrentData.get("announce"), StandardCharsets.UTF_8);
       Map<String, Object> info = (Map<String, Object>) torrentData.get("info");
       long length = (long) info.get("length");
@@ -52,16 +66,95 @@ public class Main {
       for(byte[] piece: splitPiecesList) {
         splitPiecesHexList.add(Utils.getHex(piece));
       }
-      ByteArrayOutputStream bencodedInfoOutputStream = new ByteArrayOutputStream();
-      Bencode.bencode(info, bencodedInfoOutputStream);
+      byte[] infoHash = getInfoHash(info);
 
       System.out.println("Tracker URL: " + announceUrl);
       System.out.println("Length: " + length);
-      System.out.println("Info Hash: " + Utils.calculateSHA1(bencodedInfoOutputStream.toByteArray()));
+      System.out.println("Info Hash: " + Utils.calculateSHA1(infoHash));
       System.out.println("Piece Length: " + pieceLength);
       System.out.println("Piece Hashes: " + formatPiecesHex(splitPiecesHexList));
+    } else if ("peers".equals(command)) {
+      byte[] torrentFile = Files.readAllBytes(Paths.get(args[1]));
+      Map<String, Object> torrentData = parseTorrentInfo(torrentFile);
+      String announceUrl = new String((byte[]) torrentData.get("announce"), StandardCharsets.UTF_8);
+      Map<String, Object> info = (Map<String, Object>) torrentData.get("info");
+      long length = (long) info.get("length");
+      byte[] infoHash = Utils.calculateSHA1Raw(getInfoHash(info));
+
+      discoverPeers(announceUrl, infoHash, length);
     } else {
       System.out.println("Unknown command: " + command);
+    }
+
+  }
+
+  static private byte[] getInfoHash(Map<String, Object> info) throws IOException {
+    ByteArrayOutputStream bencodedInfoOutputStream = new ByteArrayOutputStream();
+    Bencode.bencode(info, bencodedInfoOutputStream);
+    return bencodedInfoOutputStream.toByteArray();
+  }
+
+  static private Map<String, Object> parseTorrentInfo(byte[] torrentFile) throws IOException {
+    PushbackInputStream in = new PushbackInputStream(new ByteArrayInputStream(torrentFile));
+    return (Map<String, Object>) Bencode.decodeBencode(in);
+  }
+  static private void discoverPeers(String trackerUrl, byte[] infoHash, long fileLength) throws UnsupportedEncodingException {
+    String urlEncodedInfoHash =
+            URLEncoder.encode(new String(infoHash, StandardCharsets.ISO_8859_1), StandardCharsets.ISO_8859_1);
+    discoverPeers(trackerUrl, urlEncodedInfoHash, fileLength);
+  }
+  static private void discoverPeers(String trackerUrl, String infoHash, long fileLength) {
+
+    StringBuilder url = new StringBuilder(trackerUrl);
+    url.append('?')
+            .append("info_hash=")
+            .append(infoHash)
+            .append("&peer_id=")
+            .append("qwertyuiopqwertyuiop")
+            .append("&port=")
+            .append(6881)
+            .append("&uploaded=")
+            .append(0)
+            .append("&downloaded=")
+            .append(0)
+            .append("&left=")
+            .append(fileLength)
+            .append("&compact=")
+            .append(1);
+    try {
+      OkHttpClient client = new OkHttpClient();
+      Request request = new Request.Builder()
+              .url(url.toString())
+              .build();
+      InputStream inputStream = null;
+      try (Response response = client.newCall(request).execute()) {
+        ResponseBody body = response.body();
+          assert body != null;
+          inputStream = new ByteArrayInputStream(body.byteStream().readAllBytes());
+      } catch (IOException ioException) {
+        throw new RuntimeException(ioException);
+      }
+
+      @SuppressWarnings("unchecked")
+      Map<String, Object> responseMap = (Map<String, Object>) Bencode.decodeBencode(new PushbackInputStream(inputStream));
+      byte[] peers = (byte[]) responseMap.get("peers");
+      for(int i = 0; i < peers.length; i += 6) {
+        byte[] peer = new byte[4];
+        byte[] peerPort = new byte[2];
+        System.arraycopy(peers, i, peer, 0, 4);
+        System.arraycopy(peers, i + 4, peerPort, 0, 2);
+        int port = ((peerPort[0] & 0xff) << 8) | (peerPort[1] & 0xff);
+        InetAddress ia = InetAddress.getByAddress(peer);
+        InetSocketAddress isa = new InetSocketAddress(ia, port);
+        System.out.println(isa.getAddress().getHostAddress() + ":" +
+                isa.getPort());
+      }
+
+
+//      HttpResponse response = client.send(request, )
+
+    } catch (Exception e) {
+
     }
 
   }
