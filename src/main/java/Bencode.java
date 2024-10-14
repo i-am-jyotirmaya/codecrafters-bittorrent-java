@@ -9,7 +9,16 @@ import java.util.TreeMap;
 
 public class Bencode {
 
-    static Object decodeBencode(PushbackInputStream in) throws IOException {
+    private static boolean preserveStrings = false;
+
+    static void preserveStrings() {
+        preserveStrings = true;
+    }
+    static void reset() {
+        preserveStrings = false;
+    }
+
+    static Object bdecode(PushbackInputStream in) throws IOException {
         int indicator = in.read();
         if (indicator == 'i') {
             return decodeInteger(in);
@@ -18,7 +27,11 @@ public class Bencode {
         } else if (indicator == 'd') {
             return decodeDictionary(in);
         } else if (Character.isDigit(indicator)) {
-            return decodeString(in, indicator);
+            byte[] decodedString = decodeString(in, indicator);
+            if (preserveStrings) {
+                return new String(decodedString, StandardCharsets.UTF_8);
+            }
+            return decodedString;
         } else {
             throw new IOException("Invalid bencode format");
         }
@@ -95,7 +108,7 @@ public class Bencode {
                 break;
             }
             in.unread(c);
-            list.add(decodeBencode(in));
+            list.add(bdecode(in));
         }
         return list;
     }
@@ -108,8 +121,8 @@ public class Bencode {
                 break;
             }
             in.unread(c);
-            String key = new String((byte[]) decodeBencode(in), StandardCharsets.UTF_8);
-            Object value = decodeBencode(in);
+            String key = preserveStrings ? (String) bdecode(in) : new String((byte[]) bdecode(in), StandardCharsets.UTF_8);
+            Object value = bdecode(in);
             map.put(key, value);
         }
         return map;
