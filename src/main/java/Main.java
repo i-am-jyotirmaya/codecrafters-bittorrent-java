@@ -8,14 +8,18 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.PushbackInputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URLEncoder;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -76,9 +80,52 @@ public class Main {
 
               discoverPeers(announceUrl, infoHash, length);
           }
+          case "handshake" -> {
+              handshake(args[1], args[2]);
+          }
           case null, default -> System.out.println("Unknown command: " + command);
       }
 
+  }
+
+  private static void handshake(String torrentFile, String hostPort) {
+      try {
+          byte[] torrentBytes = Files.readAllBytes(Paths.get(torrentFile));
+          Map<String, Object> torrentData = parseTorrentInfo(torrentBytes);
+          Map<String, Object> info = (Map<String, Object>) torrentData.get("info");
+          byte[] infoHash = Utils.calculateSHA1Raw(getInfoHash(info));
+
+          String[] split = hostPort.split(":");
+          String host = split[0], port = split[1];
+
+          try (Socket socket = new Socket(host, Integer.parseInt(port))) {
+              OutputStream outputStream = socket.getOutputStream();
+              ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+              byteArrayOutputStream.write(19);
+              byteArrayOutputStream.write("BitTorrent protocol".getBytes(StandardCharsets.UTF_8));
+              byteArrayOutputStream.write(new byte[] {0, 0, 0, 0, 0, 0, 0, 0});
+              byteArrayOutputStream.write(infoHash);
+              byteArrayOutputStream.write("01234567890123456789".getBytes(StandardCharsets.UTF_8));
+              outputStream.write(byteArrayOutputStream.toByteArray());
+
+              InputStream inputStream = socket.getInputStream();
+              byte[] response = new byte[68]; // 68 is the total size of request sent;
+              inputStream.read(response);
+              inputStream.close();
+
+              final byte[] peerIdResponse = new byte[20];
+              final ByteBuffer buffer = ByteBuffer.wrap(response);
+              buffer.position(48);
+              buffer.get(peerIdResponse, 0, 20);
+
+              System.out.println("Peer ID: " + Utils.getHex(peerIdResponse));
+
+
+          }
+
+      } catch (IOException | NoSuchAlgorithmException e) {
+          System.out.println("Error when parsing torrent file");
+      }
   }
 
   static private byte[] getInfoHash(Map<String, Object> info) throws IOException {
